@@ -2,6 +2,9 @@
   "name": "improvinator",
   "version": "0.1.0",
   "private": true,
+  "repository": "https://github.com/cajacko/improvinator.git",
+  "author": "Charlie Jackson <contact@charliejackson.com>",
+  "license": "MIT",
   "dependencies": {
     "@testing-library/jest-dom": "^5.14.1",
     "@testing-library/react": "^12.0.0",
