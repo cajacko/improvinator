@@ -1,24 +1,29 @@
 import React from "react";
-import logo from "./logo.svg";
+import Button from "@mui/material/Button";
 import "./App.css";
-import "./firebase";
+import useData from "./useData";
 
 function App() {
+  const { actions, data } = useData();
+
+  React.useEffect(() => {
+    console.log(data);
+  }, [data]);
+
   return (
     <div className="App">
       <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.tsx</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
+        <p>State: {data.state}</p>
+        <Button variant="contained" onClick={actions.reset}>
+          Reset
+        </Button>
+        <Button
+          variant="contained"
+          onClick={actions.toggleShow}
+          style={{ marginTop: 10 }}
         >
-          Learn React
-        </a>
+          Start / Stop
+        </Button>
       </header>
     </div>
   );
