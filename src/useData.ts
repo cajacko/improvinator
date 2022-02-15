@@ -1,323 +1,350 @@
 import React from "react";
 import { v4 as uuidv4 } from "uuid";
-import {
-  ref,
-  onValue,
-  set,
-  push,
-  query,
-  orderByChild,
-  limitToLast,
-  DatabaseReference,
-} from "firebase/database";
+import { ref, onValue, set, push } from "firebase/database";
 import sessionId from "./sessionId";
 import { database } from "./firebase";
 
-// interface Vote {
-//   voteId: string;
-//   dateCreated: string;
-//   userId: string;
-//   value: boolean;
-// }
-
-// interface Scene {
-//   dateCreated: string;
-//   id: string;
-//   votes: Vote[];
-// }
-
-// interface Show {
-//   dateCreated: string;
-//   dateFinished?: string | null;
-//   id: string;
-//   scenes: Scene[];
-// }
-
-// type Shows = Show[];
-
-// type State =
-//   | { state: "LOADING" }
-//   | { state: "ERROR"; error: Error }
-//   | {
-//       state: "DATA";
-//       payload:
-//         | { type: "WAITING_TO_START" }
-//         | {
-//             type: "VOTING";
-//             payload: {
-//               positive: number;
-//               negative: number;
-//               userVote: boolean | null;
-//               handleVote: (vote: boolean) => void;
-//             };
-//           }
-//         | { type: "FINISHED" };
-//     };
-
-// const lastShowRef =  query(ref(database, 'shows'), orderByChild('dateCreated'), limitToFirst(1));
-
-// function useLastShow(): { show: Show; finishCurrentShow: () => void } | { createNewShow: () => void } {
-//   const [lastShow, setLastShow] = React.useState<Show | null>(null);
-
-//   React.useEffect(() => {
-//     const unsubscribe = onValue(lastShowRef, (snapshot) => {
-//       const data = snapshot.val();
-
-//       if (!data) {
-//         setLastShow(null);
-
-//         // TODO: Handle error
-
-//         return;
-//       }
-
-//       setLastShow(data);
-//     });
-
-//     return () => {
-//       setLastShow(null);
-//       unsubscribe();
-//     };
-//   }, []);
-
-//   React.useEffect(() => {
-//     return onValue(activeShowRef, (snapshot) => {
-//       const data: unknown = snapshot.val();
-
-//       if (typeof data !== "string") {
-//         setActiveShowId(null);
-
-//         // TODO: Handle error
-
-//         return;
-//       }
-
-//       setActiveShowId(data);
-//     });
-//   }, []);
-
-//   return {
-//     show,
-//     setNewActiveShow: React.useCallback(() => {
-//       const newActiveShowId = uuidv4();
-//       const newShow = set(activeShowRef, newActiveShowId);
-//       set(getShowRef(newActiveShowId));
-//       setActiveShowId(newActiveShowId);
-//     }, []),
-//   };
-// }
-
-// export function useData(): State {
-//   const [activeShow, setActiveShow] = React.useState<string | null>(null);
-//   const [state, setState] = React.useState<State>({ state: "LOADING" });
-
-//   React.useEffect(() => {
-//     return onValue(activeShowRef, (snapshot) => {
-//       const data: unknown = snapshot.val();
-
-//       if (typeof data !== "string") {
-//         setActiveShow(null);
-
-//         setState({
-//           state: "ERROR",
-//           error: new Error("Active show is not a string"),
-//         });
-
-//         return;
-//       }
-
-//       setActiveShow(data);
-//     });
-//   }, []);
-
-//   return state;
-// }
-
-// export function useActions(): { reset: () => void; toggleShow: () => void } {
-//   return {
-//     reset: React.useCallback(() => {
-//       const newActiveShowRef = uuidv4();
-
-//       set(activeShowRef, newActiveShowRef);
-//     }, []),
-//     toggleShow: React.useCallback(() => {}, []),
-//   };
-// }
-
-interface BaseShow {
+interface Vote {
   dateCreated: string;
-  id: string;
-  ref: DatabaseReference;
-  // dateStarted?: string;
-  // dateFinished?: string;
-  // scenes: Scene[];
+  value: boolean;
+  sessionId: string;
 }
 
-interface StartedShow extends BaseShow {
-  dateStarted: string;
+interface StartedScene {
+  id: string;
+  dateCreated: string;
+}
+
+interface FinishedScene extends StartedScene {
+  dateFinished: string;
+}
+
+type Scene = StartedScene | FinishedScene;
+
+interface StartedShow {
+  id: string;
+  dateCreated: string;
+  scenes: string[];
 }
 
 interface FinishedShow extends StartedShow {
   dateFinished: string;
 }
 
-type Show = StartedShow | FinishedShow | BaseShow;
+type Show = StartedShow | FinishedShow;
 
-const showsRef = ref(database, "shows");
+const currentShowIdRef = ref(database, "currentShowId");
 
-const lastShowRef = query(
-  showsRef,
-  orderByChild("dateCreated"),
-  limitToLast(1)
-);
+function getShowRef(showId: string) {
+  return ref(database, `show/${showId}`);
+}
+
+function getSceneRef(sceneId: string) {
+  return ref(database, `scene/${sceneId}`);
+}
+
+function getVotesRef(sceneId: string) {
+  return ref(database, `votes/${sceneId}`);
+}
 
 type Data =
-  | { state: "WAITING_TO_START_SHOW"; show: BaseShow }
-  | { state: "SHOW_FINISHED"; show: FinishedShow }
-  | { state: "SHOW_IN_PROGRESS"; show: StartedShow }
-  | { state: "NO_SHOWS"; show?: never };
+  | { showStatus: "WAITING"; startShow: () => void }
+  | {
+      showStatus: "FINISHED";
+      clearShow: () => void;
+      continueShow: () => void;
+    }
+  | {
+      showStatus: "IN_PROGRESS";
+      yourVote: boolean | null;
+      total: [number, number];
+      vote: (value: boolean) => void;
+      nextScene: () => void;
+      finishShow: () => void;
+    };
 
-function useData(): {
-  actions: { reset: () => void; toggleShow: () => void };
-  data: Data;
-} {
-  const [latestShow, setLatestShow] = React.useState<Show | null>();
+function useData(): Data {
+  const [currentShowId, setCurrentShowId] = React.useState<string | null>(null);
+  const [show, setShow] = React.useState<Show | null>(null);
+  const [scene, setScene] = React.useState<Scene | null>(null);
+  const [votes, setVotes] = React.useState<Vote[] | null>(null);
+
+  const showRef = React.useMemo(
+    () => (currentShowId ? getShowRef(currentShowId) : null),
+    [currentShowId]
+  );
+
+  const latestScene = show?.scenes[0];
+
+  const sceneRef = React.useMemo(
+    () => (latestScene ? getSceneRef(latestScene) : null),
+    [latestScene]
+  );
+
+  const votesRef = React.useMemo(
+    () => (latestScene ? getVotesRef(latestScene) : null),
+    [latestScene]
+  );
 
   React.useEffect(() => {
-    return onValue(lastShowRef, (snapshot) => {
-      let data: undefined | Show;
+    const unsubscribe = onValue(currentShowIdRef, (snapshot) => {
+      const data: unknown = snapshot.val();
 
-      snapshot.forEach((action) => {
-        const value: Omit<Show, "ref"> | null = action.val();
-        data = value ? { ...value, ref: action.ref } : undefined;
-      });
-
-      if (!data) {
-        setLatestShow(null);
+      if (typeof data !== "string") {
+        setCurrentShowId(null);
 
         return;
       }
 
-      console.log("Got show", data);
-
-      setLatestShow(data);
+      setCurrentShowId(data);
     });
+
+    return () => {
+      setCurrentShowId(null);
+      unsubscribe();
+    };
   }, []);
 
-  const data = React.useMemo((): Data => {
-    if (!latestShow) return { state: "NO_SHOWS" };
+  React.useEffect(() => {
+    if (!showRef) return () => setShow(null);
 
-    if ("dateFinished" in latestShow) {
-      return { state: "SHOW_FINISHED", show: latestShow };
+    const unsubscribe = onValue(showRef, (snapshot) => {
+      const data: unknown = snapshot.val();
+
+      if (!data) {
+        setShow(null);
+
+        return;
+      }
+
+      setShow(data as Show);
+    });
+
+    return () => {
+      setShow(null);
+      unsubscribe();
+    };
+  }, [showRef]);
+
+  React.useEffect(() => {
+    if (!sceneRef) return () => setScene(null);
+
+    const unsubscribe = onValue(sceneRef, (snapshot) => {
+      const data: unknown = snapshot.val();
+
+      if (!data) {
+        setScene(null);
+
+        return;
+      }
+
+      setScene(data as Scene);
+    });
+
+    return () => {
+      setScene(null);
+      unsubscribe();
+    };
+  }, [sceneRef]);
+
+  React.useEffect(() => {
+    if (!votesRef) return () => setVotes(null);
+
+    const unsubscribe = onValue(votesRef, (snapshot) => {
+      const data: Vote[] = [];
+
+      snapshot.forEach((action) => {
+        data.push(action.val());
+      });
+
+      if (!data) {
+        setVotes(null);
+
+        return;
+      }
+
+      setVotes(data as Vote[]);
+    });
+
+    return () => {
+      setVotes(null);
+      unsubscribe();
+    };
+  }, [votesRef]);
+
+  return React.useMemo((): Data => {
+    if (show) {
+      if ("dateFinished" in show) {
+        return {
+          showStatus: "FINISHED",
+          clearShow: async () => {
+            await set(currentShowIdRef, null);
+          },
+          continueShow: async () => {
+            const date = new Date().toISOString();
+            const sceneId = uuidv4();
+
+            const newScene: StartedScene = {
+              id: sceneId,
+              dateCreated: date,
+            };
+
+            const updatedScene: FinishedScene | null = scene
+              ? {
+                  ...scene,
+                  dateFinished: date,
+                }
+              : null;
+
+            const updatedShow: StartedShow = {
+              dateCreated: show.dateCreated,
+              id: show.id,
+              scenes: [sceneId, ...show.scenes],
+            };
+
+            // TODO: Loading and errors
+            await set(getSceneRef(newScene.id), newScene);
+            await set(getShowRef(updatedShow.id), updatedShow);
+
+            if (updatedScene) {
+              await set(getSceneRef(updatedScene.id), updatedScene);
+            }
+          },
+        };
+      }
+
+      const defaultMap: {
+        [K: string]: { dateCreated: number; value: boolean };
+      } = {};
+
+      const map = votes
+        ? votes.reduce((accumulator, vote) => {
+            const date = new Date(vote.dateCreated).getTime();
+            const previousDate = accumulator[vote.sessionId]?.dateCreated;
+
+            if (previousDate && previousDate > date) return accumulator;
+
+            return {
+              ...accumulator,
+              [vote.sessionId]: {
+                dateCreated: date,
+                value: vote.value,
+              },
+            };
+          }, defaultMap)
+        : defaultMap;
+
+      let positive: number = 0;
+      let negative: number = 0;
+
+      Object.values(map).forEach(({ value }) => {
+        if (value) {
+          positive += 1;
+        } else {
+          negative += 1;
+        }
+      });
+
+      return {
+        showStatus: "IN_PROGRESS",
+        total: [negative, positive],
+        yourVote: map[sessionId]?.value ?? null,
+        finishShow: async () => {
+          const date = new Date().toISOString();
+
+          const updatedScene: FinishedScene | null = scene
+            ? {
+                ...scene,
+                dateFinished: date,
+              }
+            : null;
+
+          const updatedShow: FinishedShow = {
+            ...show,
+            dateFinished: date,
+          };
+
+          // TODO: Loading and errors
+          await set(getShowRef(updatedShow.id), updatedShow);
+
+          if (updatedScene) {
+            await set(getSceneRef(updatedScene.id), updatedScene);
+          }
+        },
+        nextScene: async () => {
+          const date = new Date().toISOString();
+          const sceneId = uuidv4();
+
+          const newScene: StartedScene = {
+            id: sceneId,
+            dateCreated: date,
+          };
+
+          const updatedScene: FinishedScene | null = scene
+            ? {
+                ...scene,
+                dateFinished: date,
+              }
+            : null;
+
+          const updatedShow: StartedShow = {
+            ...show,
+            scenes: [sceneId, ...show.scenes],
+          };
+
+          // TODO: Loading and errors
+          await set(getSceneRef(newScene.id), newScene);
+          await set(getShowRef(updatedShow.id), updatedShow);
+
+          if (updatedScene) {
+            await set(getSceneRef(updatedScene.id), updatedScene);
+          }
+        },
+        vote: (value) => {
+          if (!votesRef) {
+            // TODO: Don't let this happen;
+
+            return;
+          }
+
+          const date = new Date().toISOString();
+
+          const vote: Vote = {
+            dateCreated: date,
+            sessionId,
+            value,
+          };
+
+          push(votesRef, vote);
+        },
+      };
     }
 
-    if ("dateStarted" in latestShow) {
-      return { state: "SHOW_IN_PROGRESS", show: latestShow };
-    }
-
-    return { state: "WAITING_TO_START_SHOW", show: latestShow };
-  }, [latestShow]);
-
-  const toggleShow = React.useCallback((): null => {
-    switch (data.state) {
-      case "SHOW_FINISHED": {
+    return {
+      showStatus: "WAITING",
+      startShow: async () => {
         const date = new Date().toISOString();
+        const sceneId = uuidv4();
+        const showId = uuidv4();
 
-        const newShow: Omit<BaseShow, "ref"> = {
-          id: uuidv4(),
+        const newScene: StartedScene = {
+          id: sceneId,
           dateCreated: date,
         };
 
-        // TODO: Loading
-
-        push(showsRef, newShow)
-          .then((ref) => {
-            // TODO: Clear loading
-            setLatestShow({ ...newShow, ref });
-          })
-          .catch((error) => {
-            // TODO: clear loading and do something with error
-            console.error(error);
-          });
-
-        return null;
-      }
-      case "NO_SHOWS": {
-        const date = new Date().toISOString();
-
-        const newShow: Omit<StartedShow, "ref"> = {
-          id: uuidv4(),
+        const newShow: StartedShow = {
+          id: showId,
           dateCreated: date,
-          dateStarted: date,
+          scenes: [sceneId],
         };
 
-        // TODO: Loading
-
-        push(showsRef, newShow)
-          .then((ref) => {
-            // TODO: Clear loading
-            setLatestShow({ ...newShow, ref });
-          })
-          .catch((error) => {
-            // TODO: clear loading and do something with error
-            console.error(error);
-          });
-
-        return null;
-      }
-      case "WAITING_TO_START_SHOW": {
-        const date = new Date().toISOString();
-
-        const newShow: Omit<StartedShow, "ref"> = {
-          dateCreated: data.show.dateCreated,
-          dateStarted: date,
-          id: data.show.id,
-        };
-
-        set(data.show.ref, newShow)
-          .then(() => {
-            // TODO: Clear loading
-            setLatestShow({ ...newShow, ref: data.show.ref });
-          })
-          .catch((error) => {
-            // TODO: clear loading and do something with error
-            console.error(error);
-          });
-
-        return null;
-      }
-      case "SHOW_IN_PROGRESS": {
-        const date = new Date().toISOString();
-
-        const newShow: Omit<FinishedShow, "ref"> = {
-          dateCreated: data.show.dateCreated,
-          dateStarted: data.show.dateStarted,
-          id: data.show.id,
-          dateFinished: date,
-        };
-
-        set(data.show.ref, newShow)
-          .then(() => {
-            // TODO: Clear loading
-            setLatestShow({ ...newShow, ref: data.show.ref });
-          })
-          .catch((error) => {
-            // TODO: clear loading and do something with error
-            console.error(error);
-          });
-
-        return null;
-      }
-    }
-  }, [data.state, data.show]);
-
-  return {
-    actions: {
-      reset: () => undefined,
-      toggleShow,
-    },
-    data,
-  };
+        // TODO: Loading and errors
+        await set(getSceneRef(sceneId), newScene);
+        await set(getShowRef(showId), newShow);
+        await set(currentShowIdRef, showId);
+      },
+    };
+  }, [scene, show, votes, votesRef]);
 }
 
 export default useData;
