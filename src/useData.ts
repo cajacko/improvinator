@@ -47,7 +47,7 @@ function getVotesRef(sceneId: string) {
   return ref(database, `votes/${sceneId}`);
 }
 
-type Data =
+export type Data =
   | { showStatus: "WAITING"; startShow: () => void }
   | {
       showStatus: "FINISHED";
@@ -63,7 +63,7 @@ type Data =
       finishShow: () => void;
     };
 
-function useData(): Data {
+function useData(isPerformer: boolean): Data {
   const [currentShowId, setCurrentShowId] = React.useState<string | null>(null);
   const [show, setShow] = React.useState<Show | null>(null);
   const [scene, setScene] = React.useState<Scene | null>(null);
@@ -172,7 +172,7 @@ function useData(): Data {
     };
   }, [votesRef]);
 
-  return React.useMemo((): Data => {
+  const data = React.useMemo((): Data => {
     if (show) {
       if ("dateFinished" in show) {
         return {
@@ -345,6 +345,50 @@ function useData(): Data {
       },
     };
   }, [scene, show, votes, votesRef]);
+
+  React.useEffect(() => {
+    if (!isPerformer) return;
+
+    // TODO: Debounce
+    const listener = (event: KeyboardEvent) => {
+      switch (event.key) {
+        case "Enter":
+          switch (data.showStatus) {
+            case "FINISHED":
+              return data.clearShow();
+            case "IN_PROGRESS":
+              return data.finishShow();
+            case "WAITING":
+              return data.startShow();
+            default:
+              return;
+          }
+        case " ": {
+          switch (data.showStatus) {
+            case "FINISHED":
+              return data.continueShow();
+            case "IN_PROGRESS":
+              return data.nextScene();
+            case "WAITING":
+            default:
+              return;
+          }
+        }
+        default:
+          return;
+      }
+    };
+
+    const event = "keydown";
+
+    document.addEventListener(event, listener);
+
+    return () => {
+      document.removeEventListener(event, listener);
+    };
+  }, [data, isPerformer]);
+
+  return data;
 }
 
 export default useData;
