@@ -88,12 +88,12 @@ function App(data: Data) {
     <Container>
       {data.showStatus === "WAITING" && (
         <Wrapper>
-          <Typography>Get ready for the show!</Typography>
+          <Text>Get ready for the show!</Text>
         </Wrapper>
       )}
       {data.showStatus === "FINISHED" && (
         <Wrapper>
-          <Typography>That's all folk! Thanks for coming!</Typography>
+          <Text>That's all folk! Thanks for coming!</Text>
         </Wrapper>
       )}
       {data.showStatus === "IN_PROGRESS" && (
