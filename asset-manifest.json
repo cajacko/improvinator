@@ -1,12 +1,12 @@
 {
   "files": {
-    "main.js": "/improvinator/static/js/main.c63c75e1.js",
+    "main.js": "/improvinator/static/js/main.7d43d310.js",
     "static/js/787.9f3eb32c.chunk.js": "/improvinator/static/js/787.9f3eb32c.chunk.js",
     "index.html": "/improvinator/index.html",
-    "main.c63c75e1.js.map": "/improvinator/static/js/main.c63c75e1.js.map",
+    "main.7d43d310.js.map": "/improvinator/static/js/main.7d43d310.js.map",
     "787.9f3eb32c.chunk.js.map": "/improvinator/static/js/787.9f3eb32c.chunk.js.map"
   },
   "entrypoints": [
-    "static/js/main.c63c75e1.js"
+    "static/js/main.7d43d310.js"
   ]
 }
