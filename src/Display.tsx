@@ -1,10 +1,8 @@
 import React from "react";
 import Typography from "@mui/material/Typography";
 import styled from "styled-components";
-import useData, { Data } from "./useData";
+import { Data } from "./useData";
 import getEmoji, { getScore } from "./getEmoji";
-
-const isPerformer = window.location.search.includes("performer=true");
 
 const Container = styled.div<{ value: number }>`
   position: fixed;
@@ -48,15 +46,52 @@ const Text = styled(Typography)`
   padding: 40px;
 `;
 
-function Display(props: Data) {
-  const data = useData(isPerformer);
+const InvisibleButton = styled.button`
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  z-index: 9999;
+  opacity: 0;
+`;
+
+function Display(data: Data) {
   const value =
     data.showStatus === "IN_PROGRESS"
       ? getScore(data.total[0], data.total[1])
       : 0;
 
+  const rightAction = React.useCallback((): null => {
+    switch (data.showStatus) {
+      case "FINISHED":
+        data.continueShow();
+        return null;
+      case "IN_PROGRESS":
+        data.nextScene();
+        return null;
+      case "WAITING":
+        return null;
+    }
+  }, [data]);
+
+  const leftAction = React.useCallback(() => {
+    switch (data.showStatus) {
+      case "FINISHED":
+        data.clearShow();
+        return null;
+      case "IN_PROGRESS":
+        data.finishShow();
+        return null;
+      case "WAITING":
+        data.startShow();
+        return null;
+    }
+  }, [data]);
+
   return (
     <Container value={value}>
+      <InvisibleButton style={{ left: 0 }} onClick={leftAction} />
+      <InvisibleButton style={{ right: 0 }} onClick={rightAction} />
       <Wrapper>
         {data.showStatus === "WAITING" && <Text>Get ready for the show!</Text>}
         {data.showStatus === "FINISHED" && (
