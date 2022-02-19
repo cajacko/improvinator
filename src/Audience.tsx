@@ -83,9 +83,24 @@ const Button = styled(MuiButton)<{ $isSelected: boolean } & ButtonProps>`
   opacity: ${({ $isSelected }) => ($isSelected ? 0.5 : 1)};
 `;
 
-function App(data: Data) {
+const InvisibleButton = styled.button`
+  height: 100px;
+  width: 100px;
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 999;
+  opacity: 0;
+`;
+
+function App(data: Data & { handleInvisibleButton?: () => void }) {
+  const { handleInvisibleButton } = data;
+
   return (
     <Container>
+      {handleInvisibleButton && (
+        <InvisibleButton onClick={handleInvisibleButton} />
+      )}
       {data.showStatus === "WAITING" && (
         <Wrapper>
           <Text>Get ready for the show!</Text>
